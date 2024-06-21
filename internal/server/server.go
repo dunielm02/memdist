@@ -4,13 +4,10 @@ import (
 	"context"
 
 	"github.com/dunielm02/memdist/api/v1"
-	"github.com/dunielm02/memdist/internal/db"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-var _ KeyValueDb = &db.DB{}
 
 type KeyValueDb interface {
 	Get(*api.GetRequest) (*api.GetResponse, error)

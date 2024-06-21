@@ -4,6 +4,7 @@ go 1.22.4
 
 require (
 	github.com/stretchr/testify v1.9.0
+	github.com/travisjeffery/go-dynaport v1.0.0
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.2
 )
@@ -11,7 +12,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/travisjeffery/go-dynaport v1.0.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
