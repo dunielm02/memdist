@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/dunielm02/proglog/api";
+
+service database{
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc ConsumeStream(ConsumeRequest) returns (stream ConsumeResponse);
+}
+
+message GetRequest {
+  string Key = 1;
+}
+message GetResponse {
+  string Value = 1;
+}
+
+message SetRequest {
+  string Key = 1;
+  string Value = 2;
+}
+
+message SetResponse {}
+
+message DeleteRequest {
+  string Key = 1;
+}
+
+message DeleteResponse {}
+
+message ConsumeRequest {}
+
+message ConsumeResponse {
+  string Key = 1;
+  string Value = 2;
+}
