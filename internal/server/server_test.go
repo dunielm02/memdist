@@ -2,17 +2,16 @@ package server_test
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"testing"
 
 	"github.com/dunielm02/memdist/api/v1"
+	"github.com/dunielm02/memdist/internal/config"
 	"github.com/dunielm02/memdist/internal/db"
 	"github.com/dunielm02/memdist/internal/server"
 	"github.com/stretchr/testify/require"
-	"github.com/travisjeffery/go-dynaport"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 func TestServer(t *testing.T) {
@@ -60,13 +59,25 @@ func TestServer(t *testing.T) {
 
 func setup(t *testing.T) api.DatabaseClient {
 	t.Helper()
-	srv, err := server.New(server.Config{
-		Data: db.New(),
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	tlsConfig, err := config.GetTlsConfig(config.TLSConfig{
+		CAFile:   config.CAFile,
+		KeyFile:  config.ServerKeyFile,
+		CertFile: config.ServerCertFile,
+		Server:   true,
+		// ServerAddress: ln.Addr().String(),
 	})
 	require.NoError(t, err)
 
-	port := dynaport.Get(1)[0]
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	serverOpts := []grpc.ServerOption{
+		grpc.Creds(credentials.NewTLS(tlsConfig)),
+	}
+
+	srv, err := server.New(server.Config{
+		Data: db.New(),
+	}, serverOpts...)
 	require.NoError(t, err)
 
 	go func() {
@@ -76,8 +87,15 @@ func setup(t *testing.T) api.DatabaseClient {
 		}
 	}()
 
-	opts := grpc.WithTransportCredentials(insecure.NewCredentials())
-	conn, err := grpc.NewClient(ln.Addr().String(), opts)
+	tlsConfig, err = config.GetTlsConfig(config.TLSConfig{
+		CertFile: config.ClientCertFile,
+		KeyFile:  config.ClientKeyFile,
+		CAFile:   config.CAFile,
+		Server:   false,
+	})
+	require.NoError(t, err)
+	clientOpts := grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
+	conn, err := grpc.NewClient(ln.Addr().String(), clientOpts)
 	require.NoError(t, err)
 
 	client := api.NewDatabaseClient(conn)
