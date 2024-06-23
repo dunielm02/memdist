@@ -113,6 +113,11 @@ func (m *Membership) handleLeave(member serf.Member) {
 	}
 }
 
+func (m *Membership) Leave() error {
+	err := m.serf.Leave()
+	return err
+}
+
 func (m *Membership) isLocal(member serf.Member) bool {
 	return m.serf.LocalMember().Name == member.Name
 }
