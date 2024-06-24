@@ -29,7 +29,7 @@ func TestMembership(t *testing.T) {
 
 	time.Sleep(time.Second * 3)
 	for i := 1; i < nodeCount; i++ {
-		for k, _ := range handlers[i].members {
+		for k := range handlers[i].members {
 			if k == strconv.Itoa(i) {
 				continue
 			}

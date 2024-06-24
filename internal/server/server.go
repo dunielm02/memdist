@@ -4,8 +4,11 @@ import (
 	"context"
 
 	"github.com/dunielm02/memdist/api/v1"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -16,8 +19,20 @@ type KeyValueDb interface {
 	Read() ([]*api.ConsumeResponse, error)
 }
 
+const (
+	getAction      = "get"
+	setAction      = "set"
+	deleteAction   = "delete"
+	objectWildCard = "*"
+)
+
 type Config struct {
-	Data KeyValueDb
+	Authorizer Authorizer
+	Data       KeyValueDb
+}
+
+type Authorizer interface {
+	Authorize(sub string, obj string, act string) error
 }
 
 var _ api.DatabaseServer = &grpcServer{}
@@ -28,6 +43,15 @@ type grpcServer struct {
 }
 
 func New(c Config, opts ...grpc.ServerOption) (*grpc.Server, error) {
+	opts = append(opts,
+		grpc.ChainUnaryInterceptor(
+			grpc_auth.UnaryServerInterceptor(extractAuthData),
+		),
+		grpc.ChainStreamInterceptor(
+			grpc_auth.StreamServerInterceptor(extractAuthData),
+		),
+	)
+
 	gsrv := grpc.NewServer(opts...)
 	srv := newGrpcServer(c)
 
@@ -43,6 +67,9 @@ func newGrpcServer(c Config) *grpcServer {
 }
 
 func (s *grpcServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
+	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, getAction); err != nil {
+		return nil, err
+	}
 	res, err := s.Data.Get(req)
 
 	if err != nil {
@@ -53,6 +80,9 @@ func (s *grpcServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResp
 }
 
 func (s *grpcServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
+	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, setAction); err != nil {
+		return nil, err
+	}
 	err := s.Data.Set(req)
 
 	if err != nil {
@@ -64,6 +94,9 @@ func (s *grpcServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResp
 }
 
 func (s *grpcServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
+	if err := s.Authorizer.Authorize(subject(ctx), objectWildCard, deleteAction); err != nil {
+		return nil, err
+	}
 	err := s.Data.Delete(req)
 
 	if err != nil {
@@ -74,19 +107,53 @@ func (s *grpcServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.D
 	return &api.DeleteResponse{}, nil
 }
 
-func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, res api.Database_ConsumeStreamServer) error {
-	Data, err := s.Data.Read()
+func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Database_ConsumeStreamServer) error {
+	if err := s.Authorizer.Authorize(subject(stream.Context()), objectWildCard, getAction); err != nil {
+		return err
+	}
 
+	Data, err := s.Data.Read()
 	if err != nil {
 		return status.Error(codes.Internal, "something went wrong while reading: "+err.Error())
 	}
 
 	for _, v := range Data {
-		err := res.Send(v)
-		if err != nil {
-			return status.Error(codes.Internal, "something went wrong while sending on stream: "+err.Error())
+		select {
+		case <-stream.Context().Done():
+			return nil
+		default:
+			err := stream.Send(v)
+			if err != nil {
+				return status.Error(codes.Internal, "something went wrong while sending on stream: "+err.Error())
+			}
 		}
 	}
 
 	return nil
+}
+
+type username struct{}
+
+func extractAuthData(ctx context.Context) (context.Context, error) {
+	peer, ok := peer.FromContext(ctx)
+	if !ok {
+		return ctx, status.New(
+			codes.Unknown,
+			"couldn't find peer info",
+		).Err()
+	}
+
+	if peer.AuthInfo == nil {
+		return context.WithValue(ctx, username{}, ""), nil
+	}
+
+	tlsInfo := peer.AuthInfo.(credentials.TLSInfo)
+	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
+
+	ctx = context.WithValue(ctx, username{}, subject)
+	return ctx, nil
+}
+
+func subject(ctx context.Context) string {
+	return ctx.Value(username{}).(string)
 }
