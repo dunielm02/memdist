@@ -39,20 +39,20 @@ func TestServer(t *testing.T) {
 		require.Equal(t, res.Value, v)
 	}
 
-	data, err := rootClient.ConsumeStream(context.Background(), &api.ConsumeRequest{})
-	require.NoError(t, err)
+	// data, err := rootClient.ConsumeStream(context.Background(), &api.ConsumeRequest{})
+	// require.NoError(t, err)
 
-	var cont = 0
-	for i := 0; i < cont; i++ {
-		_, err := data.Recv()
-		require.NoError(t, err)
-	}
+	// var cont = 0
+	// for i := 0; i < cont; i++ {
+	// 	_, err := data.Recv()
+	// 	require.NoError(t, err)
+	// }
 
 	rootClient.Delete(context.Background(), &api.DeleteRequest{
 		Key: "foo",
 	})
 
-	_, err = rootClient.Get(context.Background(), &api.GetRequest{
+	_, err := rootClient.Get(context.Background(), &api.GetRequest{
 		Key: "foo",
 	})
 	require.Error(t, err)

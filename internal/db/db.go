@@ -1,10 +1,22 @@
 package db
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/dunielm02/memdist/api/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+)
+
+var enc = binary.BigEndian
+
+const (
+	KeyValueSize = 4
 )
 
 type DB struct {
@@ -18,6 +30,12 @@ func New() *DB {
 }
 
 func (db *DB) Set(req *api.SetRequest) error {
+	if len(req.Key) >= (1 << KeyValueSize) {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("the size of the Key is bigger than: %d", 1<<KeyValueSize))
+	}
+	if len(req.Value) >= (1 << KeyValueSize) {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("the size of the Value is bigger than: %d", 1<<KeyValueSize))
+	}
 	db.data.Store(req.Key, req.Value)
 
 	return nil
@@ -41,17 +59,20 @@ func (db *DB) Delete(req *api.DeleteRequest) error {
 	return nil
 }
 
-func (db *DB) Read() ([]*api.ConsumeResponse, error) {
-	var ret []*api.ConsumeResponse
+func (db *DB) Read() io.Reader {
+	var ret = bytes.NewBuffer([]byte{})
 	db.data.Range(func(key, value any) bool {
-		ret = append(ret, &api.ConsumeResponse{
+		record := &api.Record{
 			Key:   key.(string),
 			Value: value.(string),
-		})
+		}
+		encoded, _ := proto.Marshal(record)
+		binary.Write(ret, enc, uint32(len(encoded)))
+		ret.Write(encoded)
 		return true
 	})
 
-	return ret, nil
+	return ret
 }
 
 func (db *DB) Reset() error {

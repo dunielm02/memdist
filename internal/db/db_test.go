@@ -1,12 +1,17 @@
 package db_test
 
 import (
+	"encoding/binary"
+	"io"
 	"testing"
 
 	"github.com/dunielm02/memdist/api/v1"
 	"github.com/dunielm02/memdist/internal/db"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
+
+var enc = binary.BigEndian
 
 func TestDb(t *testing.T) {
 	data := db.New()
@@ -29,20 +34,37 @@ func TestDb(t *testing.T) {
 		require.Equal(t, res.Value, v)
 	}
 
-	all, err := data.Read()
-	require.NoError(t, err)
-	require.Equal(t, len(all), len(testCases))
+	read := data.Read()
+	for {
+		s := make([]byte, db.KeyValueSize)
+		n, err := read.Read(s)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		require.Equal(t, n, db.KeyValueSize)
 
-	err = data.Delete(&api.DeleteRequest{Key: "foo"})
+		size := enc.Uint32(s)
+		data := make([]byte, int(size))
+		n, err = read.Read(data)
+		require.NoError(t, err)
+		require.Equal(t, uint32(n), size)
+
+		var record = &api.Record{}
+		proto.Unmarshal(data, record)
+
+		require.Equal(t, testCases[record.Key], record.Value)
+	}
+
+	err := data.Delete(&api.DeleteRequest{Key: "foo"})
 	require.NoError(t, err)
 
-	all, err = data.Read()
-	require.NoError(t, err)
-	require.Equal(t, len(all), len(testCases)-1)
+	_, err = data.Get(&api.GetRequest{Key: "foo"})
+	require.Error(t, err)
 
-	require.NoError(t, data.Reset())
-
-	all, err = data.Read()
+	err = data.Reset()
 	require.NoError(t, err)
-	require.Equal(t, len(all), 0)
+
+	_, err = data.Get(&api.GetRequest{Key: "john"})
+	require.Error(t, err)
 }

@@ -4,11 +4,19 @@ package api;
 
 option go_package = "github.com/dunielm02/proglog/api";
 
+message Record {
+  string Key = 1;
+  string Value = 2;
+}
+
+message Records {
+  repeated Record Array = 1;
+}
+
 service database{
   rpc Get(GetRequest) returns (GetResponse);
   rpc Set(SetRequest) returns (SetResponse);
   rpc Delete(DeleteRequest) returns (DeleteResponse);
-  rpc ConsumeStream(ConsumeRequest) returns (stream ConsumeResponse);
 }
 
 message GetRequest {
@@ -30,10 +38,3 @@ message DeleteRequest {
 }
 
 message DeleteResponse {}
-
-message ConsumeRequest {}
-
-message ConsumeResponse {
-  string Key = 1;
-  string Value = 2;
-}

@@ -25,7 +25,6 @@ type DatabaseClient interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
-	ConsumeStream(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (Database_ConsumeStreamClient, error)
 }
 
 type databaseClient struct {
@@ -63,38 +62,6 @@ func (c *databaseClient) Delete(ctx context.Context, in *DeleteRequest, opts ...
 	return out, nil
 }
 
-func (c *databaseClient) ConsumeStream(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (Database_ConsumeStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Database_ServiceDesc.Streams[0], "/api.database/ConsumeStream", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &databaseConsumeStreamClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type Database_ConsumeStreamClient interface {
-	Recv() (*ConsumeResponse, error)
-	grpc.ClientStream
-}
-
-type databaseConsumeStreamClient struct {
-	grpc.ClientStream
-}
-
-func (x *databaseConsumeStreamClient) Recv() (*ConsumeResponse, error) {
-	m := new(ConsumeResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // DatabaseServer is the server API for Database service.
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility
@@ -102,7 +69,6 @@ type DatabaseServer interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
-	ConsumeStream(*ConsumeRequest, Database_ConsumeStreamServer) error
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -118,9 +84,6 @@ func (UnimplementedDatabaseServer) Set(context.Context, *SetRequest) (*SetRespon
 }
 func (UnimplementedDatabaseServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
-}
-func (UnimplementedDatabaseServer) ConsumeStream(*ConsumeRequest, Database_ConsumeStreamServer) error {
-	return status.Errorf(codes.Unimplemented, "method ConsumeStream not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 
@@ -189,27 +152,6 @@ func _Database_Delete_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Database_ConsumeStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ConsumeRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(DatabaseServer).ConsumeStream(m, &databaseConsumeStreamServer{stream})
-}
-
-type Database_ConsumeStreamServer interface {
-	Send(*ConsumeResponse) error
-	grpc.ServerStream
-}
-
-type databaseConsumeStreamServer struct {
-	grpc.ServerStream
-}
-
-func (x *databaseConsumeStreamServer) Send(m *ConsumeResponse) error {
-	return x.ServerStream.SendMsg(m)
-}
-
 // Database_ServiceDesc is the grpc.ServiceDesc for Database service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -230,12 +172,6 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Database_Delete_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "ConsumeStream",
-			Handler:       _Database_ConsumeStream_Handler,
-			ServerStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "api/v1/api.proto",
 }

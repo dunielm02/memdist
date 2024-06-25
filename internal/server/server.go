@@ -16,7 +16,6 @@ type KeyValueDb interface {
 	Get(*api.GetRequest) (*api.GetResponse, error)
 	Set(*api.SetRequest) error
 	Delete(*api.DeleteRequest) error
-	Read() ([]*api.ConsumeResponse, error)
 }
 
 const (
@@ -105,31 +104,6 @@ func (s *grpcServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.D
 	}
 
 	return &api.DeleteResponse{}, nil
-}
-
-func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Database_ConsumeStreamServer) error {
-	if err := s.Authorizer.Authorize(subject(stream.Context()), objectWildCard, getAction); err != nil {
-		return err
-	}
-
-	Data, err := s.Data.Read()
-	if err != nil {
-		return status.Error(codes.Internal, "something went wrong while reading: "+err.Error())
-	}
-
-	for _, v := range Data {
-		select {
-		case <-stream.Context().Done():
-			return nil
-		default:
-			err := stream.Send(v)
-			if err != nil {
-				return status.Error(codes.Internal, "something went wrong while sending on stream: "+err.Error())
-			}
-		}
-	}
-
-	return nil
 }
 
 type username struct{}
