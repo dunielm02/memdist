@@ -23,7 +23,7 @@ type DB struct {
 	data sync.Map
 }
 
-func New() *DB {
+func NewDB() *DB {
 	return &DB{
 		data: sync.Map{},
 	}

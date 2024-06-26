@@ -14,7 +14,7 @@ import (
 var enc = binary.BigEndian
 
 func TestDb(t *testing.T) {
-	data := db.New()
+	data := db.NewDB()
 
 	testCases := map[string]string{
 		"foo":  "bar",
