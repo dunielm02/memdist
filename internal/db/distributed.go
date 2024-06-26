@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"crypto/tls"
 	"io"
 	"net"
@@ -11,15 +12,29 @@ import (
 	"github.com/dunielm02/memdist/api/v1"
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
+const (
+	SetRequestType    byte = 0
+	DeleteRequestType byte = 1
+)
+
+type Config struct {
+	raft.Config
+	StreamLayer *StreamLayer
+	Bootstrap   bool
+}
+
 type DistributedDB struct {
+	Config
 	raft *raft.Raft
 	db   *DB
 }
 
-func NewDistributedDB(baseDir string) (*DistributedDB, error) {
+func NewDistributedDB(baseDir string, cfg Config) (*DistributedDB, error) {
 	distDB := &DistributedDB{
 		db: NewDB(),
 	}
@@ -43,12 +58,79 @@ func NewDistributedDB(baseDir string) (*DistributedDB, error) {
 		retain,
 		os.Stderr,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	transport := raft.NewNetworkTransport()
+	maxPool := 5
+	timeout := 10 * time.Second
+	transport := raft.NewNetworkTransport(
+		cfg.StreamLayer,
+		maxPool,
+		timeout,
+		os.Stderr,
+	)
 
-	raft, err := raft.NewRaft(raftConfig, fsm, ldb, sdb, snapshotStore, nil)
+	distDB.raft, err = raft.NewRaft(raftConfig, fsm, ldb, sdb, snapshotStore, transport)
+	if err != nil {
+		return nil, err
+	}
 
 	return nil, nil
+}
+
+func (d *DistributedDB) Join(name string, addrs string) error {
+	
+}
+
+func (d *DistributedDB) Leave(name string) error {
+
+}
+
+func (d *DistributedDB) Get(req *api.GetRequest) (*api.GetResponse, error) {
+	return d.db.Get(req)
+}
+
+func (d *DistributedDB) Set(req *api.SetRequest) error {
+	_, err := d.apply(SetRequestType, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DistributedDB) Delete(req *api.DeleteRequest) error {
+	_, err := d.apply(DeleteRequestType, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DistributedDB) apply(requestType byte, req proto.Message) (interface{}, error) {
+	var buf bytes.Buffer
+	_, err := buf.Write([]byte{requestType})
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	_, err = buf.Write(encoded)
+	if err != nil {
+		return nil, err
+	}
+
+	future := d.raft.Apply(buf.Bytes(), 10*time.Second)
+	if future.Error() != nil {
+		return nil, future.Error()
+	}
+	res := future.Response()
+	if err, ok := res.(error); ok {
+		return nil, err
+	}
+	return res, nil
 }
 
 var _ raft.FSM = &fsm{}
@@ -58,7 +140,36 @@ type fsm struct {
 }
 
 func (f *fsm) Apply(log *raft.Log) interface{} {
-	return nil
+	reqType := log.Data[0]
+	switch reqType {
+	case SetRequestType:
+		return f.applySetRequest(log.Data[1:])
+	case DeleteRequestType:
+		return f.applyDeleteRequest(log.Data[1:])
+	}
+	return status.Error(codes.Internal, "Something went wrong applying the request")
+}
+
+func (f *fsm) applySetRequest(req []byte) error {
+	setReq := &api.SetRequest{}
+	err := proto.Unmarshal(req, setReq)
+	if err != nil {
+		return err
+	}
+	err = f.db.Set(setReq)
+
+	return err
+}
+
+func (f *fsm) applyDeleteRequest(req []byte) error {
+	delReq := &api.DeleteRequest{}
+	err := proto.Unmarshal(req, delReq)
+	if err != nil {
+		return err
+	}
+	err = f.db.Delete(delReq)
+
+	return err
 }
 
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
@@ -125,7 +236,7 @@ type StreamLayer struct {
 	peerTLSConfig   *tls.Config
 }
 
-func newStreamLayer(ln net.Listener, serverTLSConfig *tls.Config, peerTLSConfig *tls.Config) *StreamLayer {
+func NewStreamLayer(ln net.Listener, serverTLSConfig *tls.Config, peerTLSConfig *tls.Config) *StreamLayer {
 	return &StreamLayer{
 		ln:              ln,
 		serverTLSConfig: serverTLSConfig,

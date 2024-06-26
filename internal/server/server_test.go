@@ -39,15 +39,6 @@ func TestServer(t *testing.T) {
 		require.Equal(t, res.Value, v)
 	}
 
-	// data, err := rootClient.ConsumeStream(context.Background(), &api.ConsumeRequest{})
-	// require.NoError(t, err)
-
-	// var cont = 0
-	// for i := 0; i < cont; i++ {
-	// 	_, err := data.Recv()
-	// 	require.NoError(t, err)
-	// }
-
 	rootClient.Delete(context.Background(), &api.DeleteRequest{
 		Key: "foo",
 	})
@@ -85,7 +76,7 @@ func setup(t *testing.T) (api.DatabaseClient, api.DatabaseClient) {
 	require.NoError(t, err)
 
 	srv, err := server.New(server.Config{
-		Data:       db.New(),
+		Data:       db.NewDB(),
 		Authorizer: authorizer,
 	}, serverOpts...)
 	require.NoError(t, err)
