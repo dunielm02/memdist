@@ -80,11 +80,17 @@ func NewDistributedDB(baseDir string, cfg Config) (*DistributedDB, error) {
 }
 
 func (d *DistributedDB) Join(name string, addrs string) error {
-	
+	future := d.raft.AddVoter(raft.ServerID(name), raft.ServerAddress(addrs), 0, 0)
+	if err := future.Error(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (d *DistributedDB) Leave(name string) error {
-
+	removeFuture := d.raft.RemoveServer(raft.ServerID(name), 0, 0)
+	return removeFuture.Error()
 }
 
 func (d *DistributedDB) Get(req *api.GetRequest) (*api.GetResponse, error) {
